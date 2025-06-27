@@ -99,30 +99,32 @@ export default function ImageUpload({
   }, [])
 
   const capturePhoto = useCallback(async () => {
-    if (!videoRef.current || !canvasRef.current) return
+    if (!videoRef.current || !canvasRef.current) return;
 
-    const video = videoRef.current
-    const canvas = canvasRef.current
-    const context = canvas.getContext('2d')
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
 
-    if (!context) return
+    if (!context) return;
 
-    // Set canvas size to match video
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
+    // Set canvas size to a reasonable value
+    const width = 800;
+    const height = 600;
+    canvas.width = width;
+    canvas.height = height;
 
-    // Draw video frame to canvas
-    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    // Draw the video frame to the canvas
+    context.drawImage(video, 0, 0, width, height);
 
-    // Convert canvas to blob
+    // Convert canvas to blob (JPEG, quality 0.8)
     canvas.toBlob(async (blob) => {
       if (blob) {
-        const file = new File([blob], 'captured-image.jpg', { type: 'image/jpeg' })
-        stopCamera()
-        await processImage(file)
+        const file = new File([blob], 'captured-image.jpg', { type: 'image/jpeg' });
+        stopCamera();
+        await processImage(file);
       }
-    }, 'image/jpeg', 0.9)
-  }, [processImage, stopCamera])
+    }, 'image/jpeg', 0.8);
+  }, [processImage, stopCamera]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
