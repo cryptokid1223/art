@@ -23,16 +23,17 @@ export async function POST(request: NextRequest) {
     const imageBuffer = Buffer.from(await imageFile.arrayBuffer())
     const base64Image = imageBuffer.toString('base64')
 
-    // Analyze with GPT-4 Vision
-    const gptResponse = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `Analyze this artwork and provide the following information in JSON format:
+    let gptResponse
+    try {
+      gptResponse = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Analyze this artwork and provide the following information in JSON format:
 
 1. Artist Information:
    - name: The most likely artist name or "Unknown" if uncertain
@@ -51,22 +52,26 @@ export async function POST(request: NextRequest) {
    - difficulty: "Beginner", "Intermediate", or "Advanced"
 
 Please provide detailed, practical information that would help someone recreate this artwork. Focus on the visual characteristics, techniques, and materials that would be most effective.`
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:${imageFile.type};base64,${base64Image}`
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:${imageFile.type};base64,${base64Image}`
+                }
               }
-            }
-          ]
-        }
-      ],
-      max_tokens: 2000,
-    })
+            ]
+          }
+        ],
+        max_tokens: 2000,
+      })
+    } catch (apiError) {
+      console.error('OpenAI API error:', apiError)
+      return NextResponse.json({ error: 'Failed to analyze artwork with OpenAI. Please check your API key and model access.' }, { status: 500 })
+    }
 
     const gptContent = gptResponse.choices[0]?.message?.content
     if (!gptContent) {
-      throw new Error('No response from GPT-4 Vision')
+      return NextResponse.json({ error: 'No response from OpenAI.' }, { status: 500 })
     }
 
     // Parse GPT response (it should return JSON)
@@ -116,9 +121,6 @@ Please provide detailed, practical information that would help someone recreate 
 
   } catch (error) {
     console.error('Error analyzing artwork:', error)
-    return NextResponse.json(
-      { error: 'Failed to analyze artwork' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to analyze artwork. Please try again later.' }, { status: 500 })
   }
 } 
