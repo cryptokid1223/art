@@ -23,6 +23,27 @@ export async function POST(request: NextRequest) {
     const imageBuffer = Buffer.from(await imageFile.arrayBuffer())
     const base64Image = imageBuffer.toString('base64')
 
+    // Compose a clear, direct prompt for OpenAI
+    const prompt = `
+You are an expert art analyst. Given the following image of an artwork, do the following:
+1. Guess the probable name or description of the artwork and the artist (or say "Unknown" if not sure).
+2. List the dominant color palette as hex values.
+3. Give step-by-step instructions on how someone could replicate this artwork, including materials, brushes, and techniques.
+
+Respond in this JSON format:
+{
+  "artist": "Artist name or 'Unknown'",
+  "artwork": "Artwork name or description",
+  "description": "Short description of the artwork",
+  "colors": ["#hex1", "#hex2", ...],
+  "replication": {
+    "materials": ["list", "of", "materials"],
+    "techniques": ["list", "of", "techniques"],
+    "steps": ["Step 1...", "Step 2...", ...]
+  }
+}
+    `.trim();
+
     let gptResponse
     try {
       gptResponse = await openai.chat.completions.create({
@@ -31,38 +52,12 @@ export async function POST(request: NextRequest) {
           {
             role: "user",
             content: [
-              {
-                type: "text",
-                text: `Analyze this artwork and provide the following information in JSON format:
-
-1. Artist Information:
-   - name: The most likely artist name or "Unknown" if uncertain
-   - description: A brief description of the artwork and artist style
-   - confidence: A number between 0 and 1 indicating confidence in the artist attribution
-
-2. Artwork Analysis:
-   - style: The artistic style (e.g., Impressionism, Abstract, Renaissance, etc.)
-   - period: The likely time period or era
-   - medium: The likely medium used (oil paint, watercolor, digital, etc.)
-
-3. Replication Guide:
-   - materials: Array of materials needed to replicate this artwork
-   - techniques: Array of painting/artistic techniques used
-   - steps: Array of step-by-step instructions for replication
-   - difficulty: "Beginner", "Intermediate", or "Advanced"
-
-Please provide detailed, practical information that would help someone recreate this artwork. Focus on the visual characteristics, techniques, and materials that would be most effective.`
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${imageFile.type};base64,${base64Image}`
-                }
-              }
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: `data:${imageFile.type};base64,${base64Image}` } }
             ]
           }
         ],
-        max_tokens: 2000,
+        max_tokens: 1500,
       })
     } catch (apiError) {
       console.error('OpenAI API error:', apiError)
@@ -74,50 +69,46 @@ Please provide detailed, practical information that would help someone recreate 
       return NextResponse.json({ error: 'No response from OpenAI.' }, { status: 500 })
     }
 
-    // Parse GPT response (it should return JSON)
     let analysisData
     try {
-      // Extract JSON from the response (GPT might wrap it in markdown)
+      // Try to extract JSON from the response
       const jsonMatch = gptContent.match(/```json\n([\s\S]*?)\n```/) || 
                        gptContent.match(/\{[\s\S]*\}/)
       const jsonString = jsonMatch ? jsonMatch[1] || jsonMatch[0] : gptContent
       analysisData = JSON.parse(jsonString)
     } catch (parseError) {
-      console.error('Error parsing GPT response:', parseError)
-      // Fallback to a structured response
+      console.error('Error parsing GPT response:', parseError, gptContent)
+      // Fallback: just return the raw text
       analysisData = {
-        artistInfo: {
-          name: "Unknown Artist",
-          description: gptContent,
-          confidence: 0.5
-        },
-        analysis: {
-          style: "Unknown",
-          period: "Unknown",
-          medium: "Unknown"
-        },
-        replicationGuide: {
-          materials: ["Canvas", "Paint", "Brushes"],
-          techniques: ["Basic painting techniques"],
-          steps: ["1. Prepare your canvas", "2. Apply paint", "3. Add details"],
-          difficulty: "Beginner"
+        artist: "Unknown",
+        artwork: "Unknown",
+        description: gptContent,
+        colors: [],
+        replication: {
+          materials: [],
+          techniques: [],
+          steps: []
         }
       }
     }
 
-    // Extract color palette
+    // Use our own color extractor as a fallback or supplement
     const colorPalette = extractColorPalette(imageBuffer)
-
-    // Create the final response
-    const artworkData = {
-      imageUrl: `data:${imageFile.type};base64,${base64Image}`,
-      artistInfo: analysisData.artistInfo,
-      colorPalette,
-      replicationGuide: analysisData.replicationGuide,
-      analysis: analysisData.analysis
+    if (!analysisData.colors || analysisData.colors.length === 0) {
+      analysisData.colors = colorPalette.colors
     }
 
-    return NextResponse.json(artworkData)
+    // Compose the final response
+    const result = {
+      imageUrl: `data:${imageFile.type};base64,${base64Image}`,
+      artist: analysisData.artist,
+      artwork: analysisData.artwork,
+      description: analysisData.description,
+      colors: analysisData.colors,
+      replication: analysisData.replication
+    }
+
+    return NextResponse.json(result)
 
   } catch (error) {
     console.error('Error analyzing artwork:', error)
