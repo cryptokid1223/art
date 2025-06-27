@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
     // Analyze with GPT-4 Vision
     const gptResponse = await openai.chat.completions.create({
-      model: "gpt-4-vision-preview",
+      model: "gpt-4-vision",
       messages: [
         {
           role: "user",
